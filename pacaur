@@ -103,7 +103,28 @@ UpgradeAur() {
     # add devel packages
     if [[ $devel ]]; then
         for i in "${allaurpkgs[@]}"; do
-            [[ -n "$(echo "$i" | grep -E "\-(cvs|svn|git|hg|bzr|darcs)$")" ]] && aurdevelpkgs+=("$i")
+            if [[ -n "$(echo "$i" | grep -E "\-(cvs|svn|git|hg|bzr|darcs)$")" ]]; then
+                # for cached packages providing pkgver(), avoid rebuilding if pkgver and pkgrel haven't changed
+                if [[ -d "$builddir/$i" ]]; then
+                    cd "$builddir/$i"
+                    qver=$(expac -Q '%v' "$i")
+
+                    unset -f pkgver
+                    source PKGBUILD
+                    if type pkgver &> /dev/null; then
+                        DownloadAur $i
+                        msg "i" "$i: pulling new commits..."
+                        makepkg --nobuild &> /dev/null
+                        source PKGBUILD
+                        if [[ "$pkgver-$pkgrel" = "$qver" ]]; then
+                            msg "i" "$i $pkgver is up-to-date, ignoring"
+                            continue
+                        fi
+                    fi
+                fi
+
+                aurdevelpkgs+=("$i")
+            fi
         done
         downloadjson ${aurdevelpkgs[@]}
         aurdevelpkgsSver=($(getjsonvar "Version"))
